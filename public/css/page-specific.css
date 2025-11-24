@@ -1,0 +1,68 @@
+
+/* Centered layout for login/auth pages */
+.page-centered {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Back button styles for standalone pages */
+.back-btn {
+    padding: 10px 20px;
+    border: 2px solid #C9B37E;
+    background: #FFFFFF;
+    color: #121426;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.back-btn:hover {
+    background: #C9B37E;
+    transform: translateY(-2px);
+}
+
+/* Loading state */
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+/* Error state */
+.error {
+    background: #fee;
+    color: #c33;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+/* Submission card (for order history pages) */
+.submission-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    background: #f9f9f9;
+}
+
+.submission-header {
+    font-weight: 600;
+    color: #121426;
+    font-size: 16px;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #C9B37E;
+}
+
+/* Table wrapper for mobile scrolling */
+.table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 15px;
+}

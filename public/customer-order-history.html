@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Order History</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/forms.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>My Order History</h1>
+            <a href="index.html" class="back-btn">← Back to Dashboard</a>
+        </div>
+
+        <div class="card">
+            <div id="errorMessage" class="error" style="display: none;"></div>
+            <div id="loadingMessage" class="loading">Loading order history...</div>
+            <div id="historyContent"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+        let token = localStorage.getItem('token');
+        let userRole = localStorage.getItem('userRole');
+
+        // Format date as DD/MM/YYYY HH:MM:SS
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+        }
+
+        // Check authentication
+        if (!token || userRole !== 'customer') {
+            window.location.href = 'index.html';
+        }
+
+        // Load order history
+        async function loadOrderHistory() {
+            try {
+                const response = await fetch(`${API_URL}/api/customer/order-history`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch order history');
+                }
+
+                const history = await response.json();
+
+                document.getElementById('loadingMessage').style.display = 'none';
+
+                const historyContent = document.getElementById('historyContent');
+
+                if (history.length === 0) {
+                    historyContent.innerHTML = '<div class="empty-state">No order history yet</div>';
+                } else {
+                    historyContent.innerHTML = history.map(submission => `
+                        <div class="submission-card">
+                            <div class="submission-header">
+                                Submitted: ${formatDate(submission.submittedAt)}
+                            </div>
+                            <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>SKU</th>
+                                        <th>Product Name</th>
+                                        <th style="text-align: right;">Quantity</th>
+                                        <th>Unit</th>
+                                        <th style="text-align: right;">Price</th>
+                                        <th style="text-align: right;">Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${submission.items.map(item => `
+                                        <tr>
+                                            <td><strong>${item.sku}</strong></td>
+                                            <td>${item.name}</td>
+                                            <td style="text-align: right;"><strong style="color: #C9B37E;">${item.orderAmount}</strong></td>
+                                            <td>${item.unit}</td>
+                                            <td style="text-align: right;">$${item.price.toFixed(2)}</td>
+                                            <td style="text-align: right;">$${(item.orderAmount * item.price).toFixed(2)}</td>
+                                        </tr>
+                                    `).join('')}
+                                    <tr style="font-weight: 600; background: #f9f9f9;">
+                                        <td colspan="5" style="text-align: right; padding-top: 15px; border-top: 2px solid #e0e0e0;">Total:</td>
+                                        <td style="text-align: right; padding-top: 15px; border-top: 2px solid #e0e0e0; color: #C9B37E; font-size: 16px;">
+                                            $${submission.items.reduce((sum, item) => sum + (item.orderAmount * item.price), 0).toFixed(2)}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading order history:', error);
+                document.getElementById('loadingMessage').style.display = 'none';
+                const errorDiv = document.getElementById('errorMessage');
+                errorDiv.textContent = 'Failed to load order history. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        // Load history on page load
+        loadOrderHistory();
+    </script>
+</body>
+</html>

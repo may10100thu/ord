@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Products - Admin Portal</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/forms.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Manage Product List</h1>
+            <div class="nav-buttons">
+                <a href="index.html" class="btn">← Dashboard</a>
+                <button class="btn logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div id="message" class="message"></div>
+
+        <!-- Statistics -->
+        <div class="stat-card">
+            <div class="stat-number" id="totalProducts">0</div>
+            <div class="stat-label">Total Products in List</div>
+        </div>
+
+        <!-- Add Product Form -->
+        <div class="card">
+            <h2 id="formTitle">Add New Product to List</h2>
+            <form id="productForm" onsubmit="handleProductSubmit(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>SKU *</label>
+                        <input type="text" id="product-sku" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Product Name *</label>
+                        <input type="text" id="product-name" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Price *</label>
+                        <input type="number" step="0.01" id="product-price" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Unit *</label>
+                        <input type="text" id="product-unit" placeholder="e.g., kg, pieces, liters" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary" id="submitBtn">Add Product</button>
+                <button type="button" class="btn btn-secondary" id="cancelBtn" onclick="cancelEdit()" style="display: none; margin-top: 10px;">Cancel</button>
+            </form>
+        </div>
+
+        <!-- Products List -->
+        <div class="card">
+            <h2>All Products (<span id="productCount">0</span>)</h2>
+            <div class="table-container">
+                <div id="productsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+        let token = localStorage.getItem('token');
+        let userRole = localStorage.getItem('userRole');
+        let editingProductId = null;
+
+        // Format date as DD/MM/YYYY HH:MM:SS
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+        }
+
+        if (!token || userRole !== 'admin') {
+            window.location.href = 'index.html';
+        }
+
+        loadProducts();
+
+        function showMessage(message, type = 'success') {
+            const msgElement = document.getElementById('message');
+            msgElement.textContent = message;
+            msgElement.className = `message ${type} show`;
+            setTimeout(() => {
+                msgElement.classList.remove('show');
+            }, 5000);
+        }
+
+        async function handleProductSubmit(event) {
+            event.preventDefault();
+            
+            const data = {
+                sku: document.getElementById('product-sku').value,
+                name: document.getElementById('product-name').value,
+                price: parseFloat(document.getElementById('product-price').value),
+                unit: document.getElementById('product-unit').value
+            };
+
+            try {
+                let response;
+                if (editingProductId) {
+                    response = await fetch(`${API_URL}/api/admin/manage-products/${editingProductId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    response = await fetch(`${API_URL}/api/admin/manage-products`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(data)
+                    });
+                }
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(editingProductId ? 'Product updated successfully!' : 'Product added successfully!', 'success');
+                    cancelEdit();
+                    loadProducts();
+                } else {
+                    showMessage(result.error || 'Failed to save product', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            }
+        }
+
+        async function loadProducts() {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/manage-products`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to load products');
+                }
+
+                const products = await response.json();
+
+                document.getElementById('totalProducts').textContent = products.length;
+                document.getElementById('productCount').textContent = products.length;
+
+                const container = document.getElementById('productsList');
+                
+                if (products.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No products in manage list yet. Add your first product above!</div>';
+                    return;
+                }
+
+                container.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>SKU</th>
+                                <th>Product Name</th>
+                                <th>Price</th>
+                                <th>Unit</th>
+                                <th>Last Updated</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${products.map(product => `
+                                <tr>
+                                    <td><strong>${product.sku}</strong></td>
+                                    <td>${product.name}</td>
+                                    <td>$${product.price.toFixed(2)}</td>
+                                    <td>${product.unit}</td>
+                                    <td>${formatDate(product.lastUpdated)}</td>
+                                    <td>
+                                        <div class="table-actions">
+                                            <button class="btn btn-small btn-primary" onclick="editProduct('${product._id}', '${product.sku}', '${product.name.replace(/'/g, "\\'")}', ${product.price}, '${product.unit}')">Edit</button>
+                                            <button class="btn btn-small btn-danger" onclick="deleteProduct('${product._id}', '${product.sku}')">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                showMessage('Failed to load products', 'error');
+            }
+        }
+
+        function editProduct(id, sku, name, price, unit) {
+            editingProductId = id;
+            document.getElementById('product-sku').value = sku;
+            document.getElementById('product-name').value = name;
+            document.getElementById('product-price').value = price;
+            document.getElementById('product-unit').value = unit;
+            
+            document.getElementById('formTitle').textContent = 'Edit Product';
+            document.getElementById('submitBtn').textContent = 'Update Product';
+            document.getElementById('cancelBtn').style.display = 'block';
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelEdit() {
+            editingProductId = null;
+            document.getElementById('productForm').reset();
+            document.getElementById('formTitle').textContent = 'Add New Product to Manage List';
+            document.getElementById('submitBtn').textContent = 'Add Product';
+            document.getElementById('cancelBtn').style.display = 'none';
+        }
+
+        async function deleteProduct(productId, sku) {
+            if (!confirm(`Are you sure you want to delete product "${sku}"? This will remove it from all customers.`)) return;
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/manage-products/${productId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage('Product deleted successfully!', 'success');
+                    loadProducts();
+                } else {
+                    showMessage(result.error || 'Failed to delete product', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('userRole');
+            localStorage.removeItem('userData');
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html>

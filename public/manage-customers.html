@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Customers - Admin Portal</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/forms.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Customer Management</h1>
+            <div class="nav-buttons">
+                <a href="index.html" class="btn">← Dashboard</a>
+                <button class="btn logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div id="message" class="message"></div>
+
+        <!-- Statistics -->
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalCustomers">0</div>
+                <div class="stat-label">Total Customers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalProducts">0</div>
+                <div class="stat-label">Total Assignments</div>
+            </div>
+        </div>
+
+        <!-- Create Customer Form -->
+        <div class="card">
+            <h2>Create New Customer Account</h2>
+            <form onsubmit="handleCreateCustomer(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Username *</label>
+                        <input type="text" id="new-customer-username" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password *</label>
+                        <input type="text" id="new-customer-password" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Company Name *</label>
+                        <input type="text" id="new-customer-company" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Person *</label>
+                        <input type="text" id="new-customer-contact" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Customer Account</button>
+            </form>
+        </div>
+
+        <!-- Assign Products to Customers -->
+        <div class="card">
+            <h2>Assign Products to Customers</h2>
+            <form onsubmit="handleAssignProducts(event)">
+                <div class="form-group">
+                    <label>Select Customers * (Hold Ctrl/Cmd to select multiple)</label>
+                    <select id="assign-customers" multiple required>
+                        <option value="" disabled>Loading customers...</option>
+                    </select>
+                    <div class="help-text">Hold Ctrl (Windows) or Cmd (Mac) to select multiple customers</div>
+                </div>
+                <div class="form-group">
+                    <label>Select Products * (Hold Ctrl/Cmd to select multiple)</label>
+                    <select id="assign-products" multiple required>
+                        <option value="" disabled>Loading products...</option>
+                    </select>
+                    <div class="help-text">Hold Ctrl (Windows) or Cmd (Mac) to select multiple products</div>
+                </div>
+                <button type="submit" class="btn btn-primary">Assign Products</button>
+            </form>
+        </div>
+
+        <!-- Customers List with Products -->
+        <div class="card">
+            <h2>All Customers & Their Products (<span id="customerCount">0</span>)</h2>
+            <div id="customersList"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+        let token = localStorage.getItem('token');
+        let userRole = localStorage.getItem('userRole');
+        let allCustomers = [];
+        let allMasterProducts = [];
+
+        if (!token || userRole !== 'admin') {
+            window.location.href = 'index.html';
+        } else {
+            window.addEventListener('DOMContentLoaded', () => {
+                loadData();
+            });
+            
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                loadData();
+            }
+        }
+
+        async function loadData() {
+            await loadMasterProducts();
+            await loadCustomers();
+        }
+
+        function showMessage(message, type = 'success') {
+            const msgElement = document.getElementById('message');
+            msgElement.textContent = message;
+            msgElement.className = `message ${type} show`;
+            setTimeout(() => {
+                msgElement.classList.remove('show');
+            }, 5000);
+        }
+
+        async function loadMasterProducts() {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/manage-products`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    allMasterProducts = await response.json();
+                    
+                    const select = document.getElementById('assign-products');
+                    select.innerHTML = allMasterProducts.map(product => 
+                        `<option value="${product._id}">${product.sku} - ${product.name} ($${product.price.toFixed(2)} / ${product.unit})</option>`
+                    ).join('');
+                }
+            } catch (error) {
+                console.error('Error loading manage products:', error);
+            }
+        }
+
+        async function handleCreateCustomer(event) {
+            event.preventDefault();
+            
+            const data = {
+                username: document.getElementById('new-customer-username').value,
+                password: document.getElementById('new-customer-password').value,
+                companyName: document.getElementById('new-customer-company').value,
+                contactPerson: document.getElementById('new-customer-contact').value
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/create-customer`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage('Customer account created successfully!', 'success');
+                    event.target.reset();
+                    loadCustomers();
+                } else {
+                    showMessage(result.error || 'Failed to create customer', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            }
+        }
+
+        async function handleAssignProducts(event) {
+            event.preventDefault();
+
+            const customerSelect = document.getElementById('assign-customers');
+            const productSelect = document.getElementById('assign-products');
+
+            const customerIds = Array.from(customerSelect.selectedOptions).map(opt => opt.value);
+            const productIds = Array.from(productSelect.selectedOptions).map(opt => opt.value);
+
+            if (customerIds.length === 0 || productIds.length === 0) {
+                showMessage('Please select at least one customer and one product', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/assign-products`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ customerIds, productIds })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(result.message, 'success');
+                    customerSelect.selectedIndex = -1;
+                    productSelect.selectedIndex = -1;
+                    loadCustomers();
+                } else {
+                    showMessage(result.error || 'Failed to assign products', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            }
+        }
+
+        async function loadCustomers() {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/customers`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        showMessage('Session expired. Please login again.', 'error');
+                        setTimeout(() => {
+                            localStorage.clear();
+                            window.location.href = 'index.html';
+                        }, 2000);
+                        return;
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                allCustomers = result.customers;
+
+                document.getElementById('totalCustomers').textContent = result.count;
+                document.getElementById('customerCount').textContent = result.count;
+                
+                // Update customer dropdown
+                const select = document.getElementById('assign-customers');
+                select.innerHTML = allCustomers.map(customer => 
+                    `<option value="${customer._id}">${customer.companyName} (${customer.username})</option>`
+                ).join('');
+                
+                // Load products for stats
+                const productsResponse = await fetch(`${API_URL}/api/admin/products`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (productsResponse.ok) {
+                    const productsData = await productsResponse.json();
+                    const totalProducts = productsData.reduce((sum, group) => sum + group.products.length, 0);
+                    document.getElementById('totalProducts').textContent = totalProducts;
+
+                    // Display customers with their products
+                    displayCustomersWithProducts(productsData);
+                }
+
+            } catch (error) {
+                console.error('Error loading customers:', error);
+                showMessage('Failed to load customers. Please refresh the page.', 'error');
+            }
+        }
+
+        function displayCustomersWithProducts(customerGroups) {
+            const container = document.getElementById('customersList');
+            
+            if (allCustomers.length === 0) {
+                container.innerHTML = '<div class="empty-state">No customers created yet. Create your first customer above!</div>';
+                return;
+            }
+
+            // Create accordion for each customer
+            container.innerHTML = allCustomers.map((customer, index) => {
+                const customerProducts = customerGroups.find(g => g.customer._id === customer._id);
+                const products = customerProducts ? customerProducts.products : [];
+
+                return `
+                    <div class="customer-accordion">
+                        <div class="customer-accordion-header" onclick="toggleAccordion(${index})">
+                            <div class="customer-info">
+                                <div class="customer-name">${customer.companyName}</div>
+                                <div class="customer-details">
+                                    Contact: ${customer.contactPerson} | Username: ${customer.username}
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span class="product-count-badge">${products.length} Products</span>
+                                <button class="btn btn-small btn-danger" onclick="event.stopPropagation(); deleteCustomer('${customer._id}', '${customer.companyName}')">Delete</button>
+                                <span class="accordion-arrow">▼</span>
+                            </div>
+                        </div>
+                        <div class="customer-accordion-content" id="accordion-${index}">
+                            <div class="customer-accordion-body">
+                                ${products.length === 0 ? 
+                                    '<div class="empty-state">No products assigned yet. Use the form above to assign products.</div>' :
+                                    `<div class="table-container">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>SKU</th>
+                                                    <th>Product Name</th>
+                                                    <th>Price</th>
+                                                    <th>Unit</th>
+                                                    <th>Order Amount</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${products.map(product => `
+                                                    <tr>
+                                                        <td><strong>${product.sku}</strong></td>
+                                                        <td>${product.name}</td>
+                                                        <td>$${product.price.toFixed(2)}</td>
+                                                        <td>${product.unit}</td>
+                                                        <td><strong style="color: #C9B37E;">${product.orderAmount || 0}</strong></td>
+                                                        <td>
+                                                            <button class="btn btn-small btn-danger" onclick="removeProductFromCustomer('${customer._id}', '${product._id}', '${product.sku}')">Remove</button>
+                                                        </td>
+                                                    </tr>
+                                                `).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>`
+                                }
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleAccordion(index) {
+            const header = document.querySelectorAll('.customer-accordion-header')[index];
+            const content = document.getElementById(`accordion-${index}`);
+            
+            header.classList.toggle('active');
+            content.classList.toggle('active');
+        }
+
+        async function deleteCustomer(customerId, companyName) {
+            if (!confirm(`Are you sure you want to delete ${companyName}? This will also delete all their products.`)) return;
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/customers/${customerId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage('Customer and their products deleted successfully!', 'success');
+                    loadCustomers();
+                } else {
+                    showMessage(result.error || 'Failed to delete customer', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            }
+        }
+
+        async function removeProductFromCustomer(customerId, productId, sku) {
+            if (!confirm(`Remove product "${sku}" from this customer?`)) return;
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/customer/${customerId}/product/${productId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage('Product removed from customer successfully!', 'success');
+                    loadCustomers();
+                } else {
+                    showMessage(result.error || 'Failed to remove product', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('userRole');
+            localStorage.removeItem('userData');
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html>
