@@ -209,11 +209,28 @@ table tbody tr:last-child td {
     background: #FFFFFF;
 }
 
+.back-btn {
+    padding: 10px 20px;
+    border: 2px solid #C9B37E;
+    background: #FFFFFF;
+    color: #121426;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+    text-decoration: none;
+    display: inline-block;
+}
 .btn-danger:hover {
     background: #121426;
     color: #FFFFFF;
 }
 
+.back-btn:hover {
+        background: #C9B37E;
+        transform: translateY(-2px);
+}
 /* Stats Cards */
 .stats {
     display: grid;
