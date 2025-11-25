@@ -75,11 +75,11 @@ router.get('/order-history', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Get all non-archived orders for this customer
+    // Get ALL orders for this customer (including archived ones)
+    // Only exclude orders that are actually deleted from the database
     const history = await OrderHistory.find({
       customerId: req.user.id,
-      orderAmount: { $gt: 0 },
-      isArchived: { $ne: true }
+      orderAmount: { $gt: 0 }
     })
       .sort({ submittedAt: -1 })
       .limit(100);
@@ -90,6 +90,7 @@ router.get('/order-history', authenticateToken, async (req, res) => {
       if (!acc[timestamp]) {
         acc[timestamp] = {
           submittedAt: entry.submittedAt,
+          isArchived: entry.isArchived || false,
           items: []
         };
       }
