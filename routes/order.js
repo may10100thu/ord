@@ -5,7 +5,32 @@ const Product = require('../models/Product');
 const OrderHistory = require('../models/OrderHistory');
 const { authenticateToken } = require('../middleware/auth');
 
-// Update order amount (draft)
+// Update order amount (draft) - by product ID in URL
+router.put('/:productId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'customer') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { productId } = req.params;
+    const { orderAmount } = req.body;
+
+    const updatedOrder = await Order.findOneAndUpdate(
+      { customerId: req.user.id, productId: productId },
+      {
+        orderAmount: orderAmount,
+        lastUpdatedTimestamp: new Date()
+      },
+      { upsert: true, new: true }
+    );
+
+    res.json(updatedOrder);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update order amount (draft) - legacy endpoint
 router.post('/update', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'customer') {
