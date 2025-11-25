@@ -38,7 +38,75 @@ router.put('/change-password', authenticateToken, async (req, res) => {
   }
 });
 
-// Get all products with orders grouped by customer
+// Get all products grouped by customer (for manage-customers page)
+router.get('/all-products', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const products = await Product.find().populate('customerId', 'companyName contactPerson username');
+
+    const validProducts = [];
+    const orphanedProducts = [];
+
+    for (const product of products) {
+      if (!product.customerId) {
+        orphanedProducts.push(product._id);
+      } else {
+        validProducts.push(product);
+      }
+    }
+
+    if (orphanedProducts.length > 0) {
+      await Product.deleteMany({ _id: { $in: orphanedProducts } });
+      await Order.deleteMany({ productId: { $in: orphanedProducts } });
+    }
+
+    const productsWithOrders = await Promise.all(validProducts.map(async (product) => {
+      const order = await Order.findOne({
+        customerId: product.customerId._id,
+        productId: product._id
+      });
+
+      const orderAmount = order ? (order.lastSubmittedAmount || 0) : 0;
+
+      return {
+        ...product.toObject(),
+        orderAmount: orderAmount,
+        orderLastUpdated: order ? order.lastSubmittedTimestamp : null
+      };
+    }));
+
+    // Group ALL products by customer (including those with no orders)
+    const groupedProducts = productsWithOrders.reduce((acc, product) => {
+      const customerId = product.customerId._id.toString();
+      if (!acc[customerId]) {
+        acc[customerId] = {
+          customer: product.customerId,
+          products: []
+        };
+      }
+      acc[customerId].products.push({
+        _id: product._id,
+        sku: product.sku,
+        name: product.name,
+        price: product.price,
+        unit: product.unit,
+        orderAmount: product.orderAmount,
+        lastUpdated: product.lastUpdated,
+        orderLastUpdated: product.orderLastUpdated
+      });
+      return acc;
+    }, {});
+
+    res.json(Object.values(groupedProducts));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all products with orders grouped by customer (for dashboard)
 router.get('/products', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -348,7 +416,7 @@ router.post('/manage-products', authenticateToken, async (req, res) => {
     });
 
     await product.save();
-    res.status(201).json({ message: 'Master product added successfully', product });
+    res.status(201).json({ message: 'Product added successfully', product });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(400).json({ error: 'SKU already exists' });
@@ -356,7 +424,7 @@ router.post('/manage-products', authenticateToken, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
+// Update manage product
 router.put('/manage-products/:id', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -364,6 +432,17 @@ router.put('/manage-products/:id', authenticateToken, async (req, res) => {
     }
 
     const { sku, name, price, unit } = req.body;
+
+    // Check if new SKU conflicts with another product
+    if (sku) {
+      const existing = await MasterProduct.findOne({
+        _id: { $ne: req.params.id },
+        sku: sku
+      });
+      if (existing) {
+        return res.status(400).json({ error: `SKU "${sku}" already exists` });
+      }
+    }
 
     const product = await MasterProduct.findByIdAndUpdate(
       req.params.id,
@@ -375,11 +454,9 @@ router.put('/manage-products/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    res.json({ message: 'Master product updated successfully', product });
+    res.json({ message: 'Product updated successfully', product });
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({ error: 'SKU already exists' });
-    }
+    console.error('Error updating manage product:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -402,4 +479,154 @@ router.delete('/manage-products/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Remove product from customer
+router.delete('/customer/:customerId/product/:productId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { customerId, productId } = req.params;
+
+    // Delete the product
+    const product = await Product.findOneAndDelete({
+      _id: productId,
+      customerId: customerId
+    });
+
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found for this customer' });
+    }
+
+    // Delete associated orders
+    await Order.deleteMany({
+      productId: productId,
+      customerId: customerId
+    });
+
+    // Delete associated order history
+    await OrderHistory.deleteMany({
+      productId: productId,
+      customerId: customerId
+    });
+
+    res.json({ message: 'Product removed from customer successfully' });
+  } catch (error) {
+    console.error('Error removing product from customer:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Assign master products to customers
+router.post('/assign-products', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { customerIds, productIds } = req.body;
+
+    if (!customerIds || !productIds || customerIds.length === 0 || productIds.length === 0) {
+      return res.status(400).json({ error: 'Please provide customer IDs and product IDs' });
+    }
+
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Get all master products
+    const masterProducts = await MasterProduct.find({ _id: { $in: productIds } });
+
+    // For each customer
+    for (const customerId of customerIds) {
+      const customer = await Customer.findById(customerId);
+      if (!customer) {
+        errors.push(`Customer ${customerId} not found`);
+        errorCount++;
+        continue;
+      }
+
+      // For each product
+      for (const masterProduct of masterProducts) {
+        try {
+          // Check if product already exists for this customer
+          const existingProduct = await Product.findOne({
+            customerId: customerId,
+            sku: masterProduct.sku
+          });
+
+          if (existingProduct) {
+            // Update existing product with master product details
+            existingProduct.name = masterProduct.name;
+            existingProduct.price = masterProduct.price;
+            existingProduct.unit = masterProduct.unit;
+            existingProduct.lastUpdated = new Date();
+            await existingProduct.save();
+          } else {
+            // Create new product for customer
+            const newProduct = new Product({
+              customerId: customerId,
+              sku: masterProduct.sku,
+              name: masterProduct.name,
+              price: masterProduct.price,
+              unit: masterProduct.unit,
+              lastUpdated: new Date()
+            });
+            await newProduct.save();
+          }
+          successCount++;
+        } catch (error) {
+          errors.push(`Error assigning ${masterProduct.sku} to ${customer.companyName}: ${error.message}`);
+          errorCount++;
+        }
+      }
+    }
+
+    if (errorCount > 0) {
+      return res.status(207).json({
+        message: `Assigned ${successCount} product(s) with ${errorCount} error(s)`,
+        errors: errors
+      });
+    }
+
+    res.json({ message: `Successfully assigned ${successCount} product(s) to customer(s)` });
+  } catch (error) {
+    console.error('Error assigning products:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/statistics', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const totalCustomers = await Customer.countDocuments();
+    const totalProducts = await Product.countDocuments();
+    
+    // Get customers active today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const activeToday = await Customer.countDocuments({
+      lastActive: { $gte: today }
+    });
+
+    // Get new customers this week
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const newThisWeek = await Customer.countDocuments({
+      createdAt: { $gte: weekAgo }
+    });
+
+    res.json({
+      totalCustomers,
+      totalProducts,
+      activeToday,
+      newThisWeek
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 module.exports = router;
