@@ -154,7 +154,7 @@
             };
 
             try {
-                const response = await fetch(`${API_URL}/api/admin/create-customer`, {
+                const response = await fetch(`${API_URL}/api/admin/customers`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -236,11 +236,10 @@
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
-                const result = await response.json();
-                allCustomers = result.customers;
+                allCustomers = await response.json();
 
-                document.getElementById('totalCustomers').textContent = result.count;
-                document.getElementById('customerCount').textContent = result.count;
+                document.getElementById('totalCustomers').textContent = allCustomers.length;
+                document.getElementById('customerCount').textContent = allCustomers.length;
                 
                 // Update customer dropdown
                 const select = document.getElementById('assign-customers');
@@ -249,7 +248,7 @@
                 ).join('');
                 
                 // Load products for stats
-                const productsResponse = await fetch(`${API_URL}/api/admin/products`, {
+                const productsResponse = await fetch(`${API_URL}/api/admin/all-products`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -262,6 +261,8 @@
 
                     // Display customers with their products
                     displayCustomersWithProducts(productsData);
+                } else {
+                    displayCustomersWithProducts([]);
                 }
 
             } catch (error) {
@@ -272,7 +273,7 @@
 
         function displayCustomersWithProducts(customerGroups) {
             const container = document.getElementById('customersList');
-            
+
             if (allCustomers.length === 0) {
                 container.innerHTML = '<div class="empty-state">No customers created yet. Create your first customer above!</div>';
                 return;
