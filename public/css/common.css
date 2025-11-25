@@ -209,28 +209,38 @@ table tbody tr:last-child td {
     background: #FFFFFF;
 }
 
-.back-btn {
-    padding: 10px 20px;
-    border: 2px solid #C9B37E;
-    background: #FFFFFF;
-    color: #121426;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    transition: all 0.3s;
-    text-decoration: none;
-    display: inline-block;
-}
 .btn-danger:hover {
     background: #121426;
     color: #FFFFFF;
 }
 
-.back-btn:hover {
-        background: #C9B37E;
-        transform: translateY(-2px);
+.btn-primary {
+    background: #C9B37E;
+    color: #121426;
+    border-color: #C9B37E;
 }
+
+.btn-primary:hover {
+    background: #d4c390;
+    border-color: #d4c390;
+}
+
+.btn-small {
+    padding: 8px 16px;
+    font-size: 13px;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    border-color: #6c757d;
+    color: #FFFFFF;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+    border-color: #545b62;
+}
+
 /* Stats Cards */
 .stats {
     display: grid;
