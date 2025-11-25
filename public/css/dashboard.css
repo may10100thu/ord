@@ -22,8 +22,8 @@
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
 
-/* Header */
-.header {
+/* Dashboard Header (only for dashboard page) */
+.dashboard .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -33,7 +33,7 @@
     border-radius: 10px;
 }
 
-.header h1 {
+.dashboard .header h1 {
     color: #FFFFFF;
 }
 
@@ -322,6 +322,16 @@
     margin-bottom: 15px;
     padding-bottom: 10px;
     border-bottom: 2px solid #C9B37E;
+}
+
+.submission-header button {
+  width: auto;             
+  padding: 4px 10px;        
+  font-size: 12px;        
+  font-weight: 500;       
+  background: #C9B37E;
+  color: #121426;
+  border: 1px solid #C9B37E;
 }
 
 .loading {
